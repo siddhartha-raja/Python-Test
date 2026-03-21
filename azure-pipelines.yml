@@ -30,7 +30,8 @@ steps:
 - script: |
     # Adding ~/.local/bin to path in case pytest-cov needs it
     export PATH=$PATH:$HOME/.local/bin
-    python3.10 -m pytest --cov=. --cov-report=xml --cov-report=html --junitxml=test-results.xml
+    export PYTHONPATH=$PYTHONPATH:$(System.DefaultWorkingDirectory)
+    python3.10 -m pytest tests/ --cov=. --cov-report=xml --junitxml=test-results.xml
   displayName: 'Run Tests and Coverage'
   continueOnError: true
 
