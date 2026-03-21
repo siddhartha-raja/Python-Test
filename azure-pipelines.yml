@@ -1,0 +1,22 @@
+trigger:
+- main
+
+pool:
+  name: 'Default'
+  demands:
+    - Agent.Name -equals chvuc21
+
+steps:
+- script: |
+    echo "--- Agent Verification Stage ---"
+    echo "Current User: $(whoami)"
+    echo "Working Directory: $(pwd)"
+    echo "Python3.10 Path: $(which python3.10)"
+    echo "System Date: $(date)"
+    echo "--------------------------------"
+  displayName: 'Run Diagnostic Echo Script'
+
+- script: |
+    echo "Listing files in the current repository structure:"
+    ls -R
+  displayName: 'Verify GitHub Structure'
