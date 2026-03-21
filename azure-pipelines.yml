@@ -19,6 +19,10 @@ steps:
       exit 1
     fi
   displayName: 'Verify Non-Root'
+- task: PipAuthenticate@1
+  inputs:
+    artifactFeeds: 'PythonFeed' # Ensure this matches your Feed Name in Azure Artifacts
+  displayName: 'Pip Authenticate'
 
 # 2. Install Test Dependencies Globally (User Space)
 - script: |
@@ -47,6 +51,29 @@ steps:
     summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
     pathToSources: '$(System.DefaultWorkingDirectory)'
   displayName: 'Publish Code Coverage'
+
+# INSERT PUBLISH TO ARTIFACTS HERE
+# ==========================================
+- script: |
+    # Install build tools
+    python3.10 -m pip install --user build twine
+    # Build the distribution (sdist and wheel)
+    python3.10 -m build
+  displayName: 'Build Python Package'
+
+- task: TwineAuthenticate@1
+  inputs:
+    artifactFeeds: 'PythonFeed'
+  displayName: 'Authenticate Twine for Azure Feed'
+
+- script: |
+    # Upload to the feed using the authenticated config
+    # The -r must match the name in your .pypirc or the feed name
+    python3.10 -m twine upload -r PythonFeed --config-file $(PYPIRC_PATH) dist/* --skip-existing
+  displayName: 'Publish to Azure Artifacts'
+# ==========================================
+
+
 
 # 5. Archive the App (Excluding test artifacts and local files)
 - task: ArchiveFiles@2
