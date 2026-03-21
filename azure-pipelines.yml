@@ -7,11 +7,12 @@ pool:
     - Agent.Name -equals chvuc21
 
 variables:
-  # Define where the app should actually live on the server
-  deployDirectory: '/home/$(whoami)/deployed_flask_app'
+  # Adjusted to use a literal home path since $(whoami) isn't a standard ADO variable
+  # You can also use /home/ubuntu/deployed_flask_app if that is the user
+  deployDirectory: '$(Pipeline.Workspace)/deployed_flask_app'
 
 steps:
-# 1. Security Check (ensure not root)
+# 1. Security Check
 - script: |
     if [ "$EUID" -eq 0 ]; then
       echo "Error: Running as root is not allowed."
@@ -19,33 +20,34 @@ steps:
     fi
   displayName: 'Verify Non-Root'
 
+# 2. Install Test Dependencies Globally (User Space)
 - script: |
-    source venv/bin/activate
-    # Run pytest with coverage. 
-    # --cov=. means cover the current directory
-    # --cov-report=xml creates the coverage.xml file Azure needs
-    pytest --cov=. --cov-report=xml --cov-report=html
-  displayName: 'Run Tests with Code Coverage'
-  continueOnError: true # Ensures the pipeline continues even if a test fails
+    python3.10 -m pip install --user --upgrade pip
+    python3.10 -m pip install --user pytest pytest-cov flask
+  displayName: 'Install Test Dependencies'
 
-# 3. Publish Test Results (The "Tests" tab in Azure)
+# 3. Run Tests with Code Coverage (Directly via System Python)
+- script: |
+    # Adding ~/.local/bin to path in case pytest-cov needs it
+    export PATH=$PATH:$HOME/.local/bin
+    python3.10 -m pytest --cov=. --cov-report=xml --cov-report=html --junitxml=test-results.xml
+  displayName: 'Run Tests and Coverage'
+  continueOnError: true
+
+# 4. Publish Results to Azure
 - task: PublishTestResults@2
   condition: succeededOrFailed()
   inputs:
-    testResultsFiles: '**/test-*.xml' # Ensure your pytest is configured to output junit xml if you want this
-    testRunTitle: 'Python $(python.version) Tests'
+    testResultsFiles: '**/test-results.xml'
+    testRunTitle: 'Python 3.10 Tests'
 
-# 4. Publish Code Coverage Results (The "Code Coverage" tab in Azure)
 - task: PublishCodeCoverageResults@2
   inputs:
-    codeCoverageTool: Cobertura
-    summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
-    reportDirectory: '$(System.DefaultWorkingDirectory)/**/htmlcov'
-  displayName: 'Publish Code Coverage to Azure UI'
+    summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
+    pathToSources: '$(System.DefaultWorkingDirectory)'
+  displayName: 'Publish Code Coverage'
 
-
-# 2. Archive the Flask App (ZIP)
-# We exclude the venv and .git folders to keep the zip small
+# 5. Archive the App (Excluding test artifacts and local files)
 - task: ArchiveFiles@2
   inputs:
     rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
@@ -55,29 +57,23 @@ steps:
     replaceExistingArchive: true
   displayName: 'Zip Application'
 
-# 3. Deploy to local directory
+# 6. Extract to Deployment Directory
 - script: |
-    # Create directory if it doesn't exist
     mkdir -p $(deployDirectory)
-    
-    # Extract the zip to the deployment folder
+    # Clear old files to ensure a clean 'prod-grade' update
+    rm -rf $(deployDirectory)/*
     unzip -o $(Build.ArtifactStagingDirectory)/flask_app.zip -d $(deployDirectory)
-    
-    echo "Files extracted to $(deployDirectory)"
   displayName: 'Extract to Deploy Directory'
 
-# 4. Post-Deployment Setup (Virtual Env & Restart)
+# 7. Finalize and Restart Service
 - script: |
     cd $(deployDirectory)
-    # Create venv if it doesn't exist
-    if [ ! -d "venv" ]; then
-      python3.10 -m venv venv
-    fi
+    # Setup/Update the deployment-specific venv
+    python3.10 -m venv venv
+    ./venv/bin/pip install --upgrade pip
+    ./venv/bin/pip install -r requirements.txt
     
-    # Install/Update dependencies
-    source venv/bin/activate
-    pip install --upgrade pip
-    pip install -r requirements.txt
+    # Restart the background service
+    # Assuming the service name is 'flaskapp'
     
-    # Restart the service (Requires the visudo setup we discussed)
   displayName: 'Finalize and Restart Service'
