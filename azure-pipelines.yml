@@ -1,0 +1,58 @@
+trigger:
+- main
+
+pool:
+  name: 'Default'
+  demands:
+    - Agent.Name -equals chvuc21
+
+variables:
+  # Define where the app should actually live on the server
+  deployDirectory: '/home/$(whoami)/deployed_flask_app'
+
+steps:
+# 1. Security Check (ensure not root)
+- script: |
+    if [ "$EUID" -eq 0 ]; then
+      echo "Error: Running as root is not allowed."
+      exit 1
+    fi
+  displayName: 'Verify Non-Root'
+
+# 2. Archive the Flask App (ZIP)
+# We exclude the venv and .git folders to keep the zip small
+- task: ArchiveFiles@2
+  inputs:
+    rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
+    includeRootFolder: false
+    archiveType: 'zip'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/flask_app.zip'
+    replaceExistingArchive: true
+  displayName: 'Zip Application'
+
+# 3. Deploy to local directory
+- script: |
+    # Create directory if it doesn't exist
+    mkdir -p $(deployDirectory)
+    
+    # Extract the zip to the deployment folder
+    unzip -o $(Build.ArtifactStagingDirectory)/flask_app.zip -d $(deployDirectory)
+    
+    echo "Files extracted to $(deployDirectory)"
+  displayName: 'Extract to Deploy Directory'
+
+# 4. Post-Deployment Setup (Virtual Env & Restart)
+- script: |
+    cd $(deployDirectory)
+    # Create venv if it doesn't exist
+    if [ ! -d "venv" ]; then
+      python3.10 -m venv venv
+    fi
+    
+    # Install/Update dependencies
+    source venv/bin/activate
+    pip install --upgrade pip
+    pip install -r requirements.txt
+    
+    # Restart the service (Requires the visudo setup we discussed)
+  displayName: 'Finalize and Restart Service'
