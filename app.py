@@ -16,8 +16,12 @@ def home():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = request.form["username"]
+        username = request.form["username"].strip()
         password = request.form["password"]
+
+        if not username or not password:
+            flash("Username and password are required")
+            return render_template("login.html")
 
         user = users_db.get(username)
 
@@ -32,10 +36,14 @@ def login():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        username = request.form["username"]
+        username = request.form["username"].strip()
         password = request.form["password"]
 
-        if username in users_db:
+        if not username or not password:
+            flash("Username and password are required")
+        elif len(password) < 8:
+            flash("Password must be at least 8 characters")
+        elif username in users_db:
             flash("User already exists")
         else:
             users_db[username] = {
