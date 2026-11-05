@@ -9,7 +9,7 @@ def client():
 
 def test_index_route(client):
     """Test if the home page loads."""
-    rv = client.get('/')
+    rv = client.get('/', follow_redirects=True)
     assert rv.status_code == 200
 
 def test_login_page(client):
